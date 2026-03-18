@@ -1,0 +1,29 @@
+[project]
+name = "deal-hunter"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "python-dotenv",
+    "pydantic>=2.0",
+    "pydantic-settings",
+    "openai",
+    "litellm",
+    "chromadb",
+    "sentence-transformers",
+    "torch",
+    "scikit-learn",
+    "numpy",
+    "feedparser",
+    "beautifulsoup4",
+    "requests",
+    "gradio",
+    "plotly",
+    "modal",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[project.scripts]
+deal-hunter = "deal_hunter.main:main"

@@ -1,0 +1,53 @@
+#Environment
+.env
+.env.*
+!.env.example
+
+# UV
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+dist/
+build/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+errors/
+
+# Notebook
+notebooks/.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+
+# Vector DB
+vectorstore/
+chroma_db/
+*.faiss
+*.index
+*.pkl
+*.pt
+*.pth
+*.onnx
+
+
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# IDE/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+
+.cursor/
