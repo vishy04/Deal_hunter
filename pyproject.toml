@@ -20,6 +20,7 @@ dependencies = [
     "plotly",
     "modal",
     "tqdm",
+    "groq",
 ]
 
 [project.optional-dependencies]
