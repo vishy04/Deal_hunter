@@ -1,55 +1,113 @@
-import re
-from sklearn.metrics import mean_squared_error, r2_score
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from itertools import accumulate
-import math
-from tqdm.notebook import tqdm
-from concurrent.futures import ThreadPoolExecutor
+"""Prediction evaluation helpers.
 
+Do not ``from ... import test`` in notebooks: that shadows the usual ``test``
+dataset split. Use ``evaluate`` or ``import ... as testing`` and
+``testing.evaluate(...)``.
+"""
+
+import math
+import warnings
+from tqdm import tqdm
+import numpy as np
+
+import plotly.graph_objects as go
+
+__all__ = ["Tester", "evaluate"]
+
+# COLOR MAP
 GREEN = "\033[92m"
-YELLOW = "\033[93m"
+ORANGE = "\033[93m"
 RED = "\033[91m"
 RESET = "\033[0m"
-COLOR_MAP = {"red": RED, "orange": YELLOW, "green": GREEN}
-
-WORKERS = 5
-DEFAULT_SIZE = 200
+COLOR_MAP = {"red": RED, "orange": ORANGE, "green": GREEN}
 
 
 class Tester:
-    def __init__(self, predictor, data, title=None, size=DEFAULT_SIZE, workers=WORKERS):
+    def __init__(self, predictor, data, title=None, size=250):
+        if callable(data) and hasattr(predictor, "iloc"):
+            warnings.warn(
+                "Arguments look reversed (DataFrame, callable). "
+                "Use Tester(predictor, data). Swapping for you.",
+                UserWarning,
+                stacklevel=2,
+            )
+            predictor, data = data, predictor
+        if not callable(predictor):
+            raise TypeError(
+                f"predictor must be callable, got {type(predictor).__name__!r}"
+            )
+        if not hasattr(data, "iloc"):
+            raise TypeError(
+                "data must support .iloc (e.g. pandas.DataFrame), "
+                f"got {type(data).__name__!r}"
+            )
         self.predictor = predictor
         self.data = data
-        self.title = title or self.make_title(predictor)
+        self.title = title or predictor.__name__.replace("_", " ").title()
         self.size = size
-        self.titles = []
-        self.guesses = []
-        self.truths = []
-        self.errors = []
-        self.colors = []
-        self.workers = workers
 
-    @staticmethod
-    def make_title(predictor) -> str:
-        return (
-            predictor.__name__.replace("__", ".")
-            .replace("_", " ")
-            .title()
-            .replace("Gpt", "GPT")
-        )
+        # Use numpy arrays for numerical data
+        self.guesses = np.zeros(size)
+        self.truths = np.zeros(size)
+        self.errors = np.zeros(size)
+        self.lche = np.zeros(size)
+        self.sles = np.zeros(size)
+        self.colors = []  # Keep as list for strings
 
-    @staticmethod
-    def post_process(value):
-        if isinstance(value, str):
-            value = value.replace("$", "").replace(",", "")
-            match = re.search(r"[-+]?\d*\.\d+|\d+", value)
-            return float(match.group()) if match else 0
-        else:
-            return value
+        # Counters
+        self.green_count = 0
+        self.orange_count = 0
+        self.red_count = 0
+
+        # Cache for computed metrics
+        self._average_error = None
+        self._rmsle = None
+
+    def run_datapoint(self, i):
+        try:
+            datapoint = self.data.iloc[i]
+            guess = float(self.predictor(datapoint))
+            truth = float(datapoint["price"])
+
+            error = abs(truth - guess)
+            log_error = math.log(truth + 1) - math.log(guess + 1)
+            sle = log_error**2
+            log_cosh_error = self.safe_log_cosh(error)
+
+            color = self.color_for(error, truth)
+
+            # Update counters
+            if color == "green":
+                self.green_count += 1
+            elif color == "orange":
+                self.orange_count += 1
+            else:  # red
+                self.red_count += 1
+
+            # Store results in arrays
+            self.guesses[i] = guess
+            self.truths[i] = truth
+            self.errors[i] = error
+            self.lche[i] = log_cosh_error
+            self.sles[i] = sle
+            self.colors.append(color)
+
+            return color
+
+        except (ValueError, TypeError, AttributeError) as e:
+            print(f"Error processing datapoint {i}: {e}")
+            self.colors.append("red")
+            self.red_count += 1
+            return "red"
+
+    def safe_log_cosh(self, x):
+        """Avoids overflow in log cosh calculation"""
+        x = max(min(x, 500), -500)  # Cap between -500 and 500
+        return math.log(math.cosh(x))
 
     def color_for(self, error, truth):
+        if truth <= 0:
+            return "orange"
         if error < 40 or error / truth < 0.2:
             return "green"
         elif error < 80 or error / truth < 0.4:
@@ -57,173 +115,160 @@ class Tester:
         else:
             return "red"
 
-    def run_datapoint(self, i):
-        datapoint = self.data[i]
-        value = self.predictor(datapoint)
-        guess = self.post_process(value)
-        truth = datapoint.price
-        error = abs(guess - truth)
-        color = self.color_for(error, truth)
-        title = (
-            datapoint.title
-            if len(datapoint.title) <= 40
-            else datapoint.title[:40] + "..."
-        )
-        return title, guess, truth, error, color
+    @property
+    def average_error(self):
+        if self._average_error is None:
+            self._average_error = np.mean(self.errors)
+        return self._average_error
+
+    @property
+    def rmsle(self):
+        if self._rmsle is None:
+            self._rmsle = math.sqrt(np.mean(self.sles))
+        return self._rmsle
 
     def chart(self, title):
-        df = pd.DataFrame(
-            {
-                "truth": self.truths,
-                "guess": self.guesses,
-                "title": self.titles,
-                "error": self.errors,
-                "color": self.colors,
-            }
+        truths = self.truths[: self.size]
+        guesses = self.guesses[: self.size]
+        max_val = float(max(np.max(truths), np.max(guesses), 1.0))
+
+        x = np.linspace(0, max_val, 80)
+        y_low_40, y_high_40 = x * 0.6, x * 1.4
+        y_low_20, y_high_20 = x * 0.8, x * 1.2
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=np.concatenate([x, x[::-1]]),
+                y=np.concatenate([y_high_40, y_low_40[::-1]]),
+                fill="toself",
+                fillcolor="rgba(255,165,0,0.12)",
+                line=dict(color="rgba(255,255,255,0)"),
+                hoverinfo="skip",
+                name="±40% Range",
+            )
         )
-
-        # Pre-format hover text
-        df["hover"] = [
-            f"{t}\nGuess=${g:,.2f} Actual=${y:,.2f}"
-            for t, g, y in zip(df["title"], df["guess"], df["truth"])
-        ]
-
-        max_val = float(max(df["truth"].max(), df["guess"].max()))
-
-        fig = px.scatter(
-            df,
-            x="truth",
-            y="guess",
-            color="color",
-            color_discrete_map={"green": "green", "orange": "orange", "red": "red"},
-            title=title,
-            labels={"truth": "Actual Price", "guess": "Predicted Price"},
-            width=1000,
-            height=800,
+        fig.add_trace(
+            go.Scatter(
+                x=np.concatenate([x, x[::-1]]),
+                y=np.concatenate([y_high_20, y_low_20[::-1]]),
+                fill="toself",
+                fillcolor="rgba(0,128,0,0.12)",
+                line=dict(color="rgba(255,255,255,0)"),
+                hoverinfo="skip",
+                name="±20% Range",
+            )
         )
-
-        # Assign customdata per trace (one color/category = one trace)
-        for tr in fig.data:
-            mask = df["color"] == tr.name
-            tr.customdata = df.loc[mask, ["hover"]].to_numpy()
-            tr.hovertemplate = "%{customdata[0]}<extra></extra>"
-            tr.marker.update(size=6)
-
-        # Reference line y=x
         fig.add_trace(
             go.Scatter(
                 x=[0, max_val],
                 y=[0, max_val],
                 mode="lines",
-                line=dict(width=2, dash="dash", color="deepskyblue"),
-                name="y = x",
-                hoverinfo="skip",
-                showlegend=False,
+                line=dict(color="deepskyblue", width=2, dash="dash"),
+                name="Perfect prediction",
             )
         )
-
-        fig.update_xaxes(range=[0, max_val])
-        fig.update_yaxes(range=[0, max_val])
-        fig.update_layout(showlegend=False)
-        fig.show()
-
-    def error_trend_chart(self):
-        n = len(self.errors)
-
-        # Running mean and std (pure Python)
-        running_sums = list(accumulate(self.errors))
-        x = list(range(1, n + 1))
-        running_means = [s / i for s, i in zip(running_sums, x)]
-
-        running_squares = list(accumulate(e * e for e in self.errors))
-        running_stds = [
-            math.sqrt((sq_sum / i) - (mean**2)) if i > 1 else 0
-            for i, sq_sum, mean in zip(x, running_squares, running_means)
-        ]
-
-        # 95% confidence interval for mean
-        ci = [
-            1.96 * (sd / math.sqrt(i)) if i > 1 else 0 for i, sd in zip(x, running_stds)
-        ]
-        upper = [m + c for m, c in zip(running_means, ci)]
-        lower = [m - c for m, c in zip(running_means, ci)]
-
-        # Plot
-        fig = go.Figure()
-
-        # Shaded confidence interval band
         fig.add_trace(
             go.Scatter(
-                x=x + x[::-1],
-                y=upper + lower[::-1],
-                fill="toself",
-                fillcolor="rgba(128,128,128,0.2)",
-                line=dict(color="rgba(255,255,255,0)"),
-                hoverinfo="skip",
-                showlegend=False,
-                name="95% CI",
+                x=truths,
+                y=guesses,
+                mode="markers",
+                marker=dict(size=7, color=self.colors, opacity=0.65),
+                name="Predictions",
             )
         )
 
-        # Main line with hover text showing CI
-        fig.add_trace(
-            go.Scatter(
-                x=x,
-                y=running_means,
-                mode="lines",
-                line=dict(width=3, color="firebrick"),
-                name="Cumulative Avg Error",
-                customdata=list(
-                    zip(
-                        ci,
-                    )
-                ),
-                hovertemplate=(
-                    "n=%{x}<br>"
-                    "Avg Error=$%{y:,.2f}<br>"
-                    "±95% CI=$%{customdata[0]:,.2f}<extra></extra>"
-                ),
-            )
+        green_pct = self.green_count / self.size * 100
+        orange_pct = self.orange_count / self.size * 100
+        red_pct = self.red_count / self.size * 100
+        stats_text = (
+            f"<b>Accuracy</b><br>"
+            f"Green: {green_pct:.1f}%<br>"
+            f"Orange: {orange_pct:.1f}%<br>"
+            f"Red: {red_pct:.1f}%<br>"
+            f"Avg error: ${self.average_error:,.2f}<br>"
+            f"RMSLE: {self.rmsle:.2f}"
         )
-
-        # Title with final stats
-        final_mean = running_means[-1]
-        final_ci = ci[-1]
-        title = f"{self.title} Error: ${final_mean:,.2f} ± ${final_ci:,.2f}"
+        fig.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=0.02,
+            y=0.98,
+            xanchor="left",
+            yanchor="top",
+            text=stats_text,
+            showarrow=False,
+            align="left",
+            bgcolor="rgba(255,255,255,0.9)",
+            borderpad=6,
+        )
 
         fig.update_layout(
-            title=title,
-            xaxis_title="Number of Datapoints",
-            yaxis_title="Average Absolute Error ($)",
+            title=dict(text=title),
+            xaxis_title="True price ($)",
+            yaxis_title="Predicted price ($)",
             width=1000,
-            height=360,
+            height=800,
             template="plotly_white",
-            showlegend=False,
+            xaxis=dict(range=[0, max_val]),
+            yaxis=dict(range=[0, max_val]),
+            legend=dict(yanchor="bottom", y=0.02, xanchor="right", x=0.99),
         )
+        try:
+            from IPython import get_ipython  # type: ignore[import-untyped]
 
-        fig.show()
+            if get_ipython() is not None:
+                fig.show()
+        except Exception:
+            pass
 
     def report(self):
-        average_error = sum(self.errors) / self.size
-        mse = mean_squared_error(self.truths, self.guesses)
-        r2 = r2_score(self.truths, self.guesses) * 100
-        title = f"{self.title} results<br><b>Error:</b> ${average_error:,.2f} <b>MSE:</b> {mse:,.0f} <b>r²:</b> {r2:.1f}%"
-        self.error_trend_chart()
+        # Print summary statistics with color
+        print("\nTest Results Summary:")
+        print(f"Total Predictions: {self.size}")
+        print(
+            f"{GREEN}Correct (Green): {self.green_count} ({self.green_count / self.size * 100:.1f}%){RESET}"
+        )
+        print(
+            f"{ORANGE}Close (Orange): {self.orange_count} ({self.orange_count / self.size * 100:.1f}%){RESET}"
+        )
+        print(
+            f"{RED}Wrong (Red): {self.red_count} ({self.red_count / self.size * 100:.1f}%){RESET}"
+        )
+        print(f"Average Error: ${self.average_error:,.2f}")
+        print(f"RMSLE: {self.rmsle:.2f}")
+
+        title = f"{self.title} Error=${self.average_error:,.2f}  RMSLE={self.rmsle:.2f}  HIT={self.green_count / self.size * 100:.1f}%"
         self.chart(title)
 
     def run(self):
-        with ThreadPoolExecutor(max_workers=self.workers) as ex:
-            for title, guess, truth, error, color in tqdm(
-                ex.map(self.run_datapoint, range(self.size)), total=self.size
-            ):
-                self.titles.append(title)
-                self.guesses.append(guess)
-                self.truths.append(truth)
-                self.errors.append(error)
-                self.colors.append(color)
-                print(f"{COLOR_MAP[color]}${error:.0f} ", end="")
+        # Progress bar for overall testing
+        with tqdm(
+            total=self.size,
+            desc="Testing Progress",
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+        ) as pbar:
+            # Progress bar for correct predictions
+            expected_correct = int(self.size * 0.7)  # Set expected correct to 70%
+            with tqdm(
+                total=expected_correct,
+                desc="Correct Predictions",
+                bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}",
+            ) as correct_pbar:
+                for i in range(self.size):
+                    color = self.run_datapoint(i)
+                    pbar.update(1)
+
+                    if color == "green" and correct_pbar.n < expected_correct:
+                        correct_pbar.update(1)
+
         self.report()
 
+    @classmethod
+    def test(cls, function, data, title=None, size=250):
+        cls(function, data, title=title, size=size).run()
 
-def evaluate(function, data, size=DEFAULT_SIZE, workers=WORKERS):
-    Tester(function, data, size=size, workers=workers).run()
+
+def evaluate(function, data, *, title=None, size=250):
+    """Run :class:`Tester`; same as :meth:`Tester.test`."""
+    Tester(function, data, title=title, size=size).run()
