@@ -29,7 +29,7 @@ hf_cache_volume = Volume.from_name("hf-hub-cache",create_if_missing = True)
 @app.cls(
     image = image.env({
         "HF_HUB_CACHE":CACHE_DIR,
-        "PYTORCH_CUDA_ALLOC_CONF" : "expandable_segments :True"
+        "PYTORCH_CUDA_ALLOC_CONF" : "expandable_segments:True"
     }),
     secrets = secrets,
     gpu = GPU , 
@@ -94,13 +94,27 @@ class Pricer:
 
         prompt = f"{QUESTION} \n\n{description}\n\n{PREFIX}"
         set_seed(42)
+
         #output -> decode -> price_extractor -> return 
-        inputs = self.tokenizer.encode(prompt,return_tensors = "pt").to("cuda")
+        
+        inputs = self.tokenizer(prompt, return_tensors="pt")  # Returns attention_mask and input_ids
+
+        # Move all inputs (input_ids, attention_mask) to CUDA for model inference
+        # Passing attention_mask ensures proper padding handling during decoding
+        inputs = {k: v.to("cuda") for k, v in inputs.items()}
+
+        # Alternative legacy usage (avoid): Only uses encode, does not handle attention_mask
+        # inputs = self.tokenizer.encode(prompt, return_tensors="pt").to("cuda")
 
         with torch.no_grad():
-            outputs = self.fine_tuned_model.generate(inputs , max_new_tokens = 5)
+            outputs = self.fine_tuned_model.generate(
+                **inputs,
+                max_new_tokens = 5,
+                pad_token_id = self.tokenizer.eos_token_id,
+                eos_token_id = self.tokenizer.eos_token_id,
+                )
         
-        result = self.tokenizer.decode(outputs[0])
+        result = self.tokenizer.decode(outputs[0], skip_special_tokens = True)
         contents = result.split("Price is $")[1]
         contents = contents.replace(",","")
         match = re.search(r"[-+]?\d*\.\d+|\d+", contents)
