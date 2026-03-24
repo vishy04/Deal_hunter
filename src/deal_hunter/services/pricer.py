@@ -14,7 +14,7 @@ image = Image.debian_slim().pip_install(
 secrets = [modal.Secret.from_name("huggingface-secret")]
 
 #Constants
-GPU = "A10G"
+GPU = "T4"
 BASE_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 CACHE_DIR = "/cache"
 MIN_CONTAINERS = 0
@@ -27,7 +27,10 @@ QUESTION = "How much does this cost to the nearest dollar"
 hf_cache_volume = Volume.from_name("hf-hub-cache",create_if_missing = True)
 
 @app.cls(
-    image = image.env({"HF_HUB_CACHE":CACHE_DIR}),
+    image = image.env({
+        "HF_HUB_CACHE":CACHE_DIR,
+        "PYTORCH_CUDA_ALLOC_CONF" : "expandable_segments :True"
+    }),
     secrets = secrets,
     gpu = GPU , 
     timeout = 1800,
@@ -73,6 +76,10 @@ class Pricer:
                 BASE_MODEL, 
                 quantization_config = quant_config,
                 device_map = "auto",
+                torch_dtype = torch.float16,
+                low_cpu_mem_usage = True ,
+                max_memory = { 0: "14GiB" , "cpu":"64GiB"} ,
+                offload_folder = f"{CACHE_DIR}/offload",
             )
             self.fine_tuned_model = PeftModel.from_pretrained(
                 self.base_model, "Vishy08/product-pricer-08-12-2025_04.35.08"
