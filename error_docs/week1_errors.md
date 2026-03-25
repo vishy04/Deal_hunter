@@ -105,3 +105,4 @@ PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
 - **How did you fix T4 OOM?** `device_map="auto"` + `max_memory` + `offload_folder` + fp16 + low-cpu-mem loading.
 - **Tradeoff of offload fix?** Works on smaller GPU, but inference is slower.
 - **One gotcha to remember?** `PYTORCH_CUDA_ALLOC_CONF` must be `expandable_segments:True` (no extra spaces).
+  adding gibrish to it#
