@@ -22,6 +22,7 @@ dependencies = [
     "tqdm",
     "groq",
     'datasets',
+    "nbformat>=5.10.4",
 ]
 
 [project.optional-dependencies]
