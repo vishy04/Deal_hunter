@@ -21,6 +21,7 @@ dependencies = [
     "modal",
     "tqdm",
     "groq",
+    'datasets',
 ]
 
 [project.optional-dependencies]
