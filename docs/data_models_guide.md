@@ -2,15 +2,15 @@
 
 ## The problem
 
-`week8/agents/deals.py` defines four data classes that flow through the deal-hunting pipeline. The biggest one, `ScrapedDeal`, does three jobs at once: holds deal data, fetches product pages over HTTP, and parses HTML with BeautifulSoup. All of this happens inside `__init__`, so constructing a `ScrapedDeal` triggers a network request. You can't create one in a test without hitting the internet.
+The original `agents/deals.py` defined four data classes that flow through the deal-hunting pipeline. The biggest one, `ScrapedDeal`, did three jobs at once: held deal data, fetched product pages over HTTP, and parsed HTML with BeautifulSoup. All of this happened inside `__init__`, so constructing a `ScrapedDeal` triggered a network request. You couldn't create one in a test without hitting the internet.
 
-The other three models (`Deal`, `DealSelection`, `Opportunity`) are cleaner, but their `Field(description=...)` prompts were written quickly and could give GPT wrong signals.
+The other three models (`Deal`, `DealSelection`, `Opportunity`) were cleaner, but their `Field(description=...)` prompts were written quickly and could give GPT wrong signals.
 
 ## Design decisions
 
 ### 1. Separate data from I/O
 
-week8's `ScrapedDeal.__init__` accepted a raw feedparser entry dict, then immediately called `requests.get()` to fetch the product page and parsed it with BeautifulSoup. That means:
+The original `ScrapedDeal.__init__` accepted a raw feedparser entry dict, then immediately called `requests.get()` to fetch the product page and parsed it with BeautifulSoup. That means:
 
 - You can't construct a `ScrapedDeal` without a network connection
 - If one HTTP request fails, the whole batch crashes (no error handling)
@@ -30,7 +30,7 @@ flowchart LR
     end
 ```
 
-`ScrapedDeal` becomes a plain `BaseModel` with five keyword arguments. The RSS service (Phase 3) handles fetching and parsing, then constructs `ScrapedDeal` instances with the data it extracted.
+`ScrapedDeal` becomes a plain `BaseModel` with five keyword arguments. The RSS service handles fetching and parsing, then constructs `ScrapedDeal` instances with the data it extracted.
 
 ### 2. Don't override `__init__` on Pydantic BaseModel
 
@@ -86,7 +86,7 @@ classDiagram
     Opportunity --> Deal : wraps
 ```
 
-The target is four `BaseModel` subclasses with no I/O. The only imports should be `pydantic` and `typing`. Everything else (`requests`, `BeautifulSoup`, `feedparser`, `extract()`, `fetch()`, `sys.path` hack, module-level `feeds`) moves to `services/rss.py` in Phase 3.
+The target is four `BaseModel` subclasses with no I/O. The only imports should be `pydantic` and `typing`. Everything else (`requests`, `BeautifulSoup`, `feedparser`, `extract()`, `fetch()`, `sys.path` hack, module-level `feeds`) moves to `services/rss.py`.
 
 ### ScrapedDeal
 

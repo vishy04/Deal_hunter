@@ -132,7 +132,7 @@ mindmap
 
 ## Migration plan
 
-Phase 1 only creates the config module. No existing code gets touched yet.
+The first step only creates the config module. No existing code gets touched yet.
 
 ```mermaid
 gantt
@@ -140,10 +140,10 @@ gantt
     dateFormat X
     axisFormat %s
 
-    section Phase 1
+    section Done
     Create Settings class           :done, 0, 1
 
-    section Future Phases
+    section Next
     ScannerAgent uses settings      :5, 6
     MessagingAgent uses settings    :6, 7
     Migrate frontier.py             :7, 8
