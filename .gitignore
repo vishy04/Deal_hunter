@@ -53,6 +53,7 @@ Thumbs.db
 .cursor/
 week8/
 docs/
+cache/
 
 # Chroma / local vector store artifacts
 notebooks/products_vectorstore/chroma.sqlite3
