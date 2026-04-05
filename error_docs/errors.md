@@ -95,14 +95,44 @@ PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
 
 - OOM fixed on T4, but slower than full-GPU loading.
 
-## Rapid-Fire Interview Prep
+## Problem 4: Chroma "rebuilds from scratch" after notebook restart
 
-- **Why `@app.cls` over `@app.function`?** Expensive model load runs once in `@modal.enter`, then reused across calls.
-- **Why was ephemeral pattern slow?** Model/tokenizer loaded inside request path.
-- **What is `attention_mask`?** 1/0 map: 1 real token, 0 padding.
-- **Why did attention warnings appear?** Used `tokenizer.encode(...)` (no mask), then `generate()` without `attention_mask`.
-- **Why did T4 OOM happen?** 16GB VRAM couldn’t fit load-time memory peaks for 8B model.
-- **How did you fix T4 OOM?** `device_map="auto"` + `max_memory` + `offload_folder` + fp16 + low-cpu-mem loading.
-- **Tradeoff of offload fix?** Works on smaller GPU, but inference is slower.
-- **One gotcha to remember?** `PYTORCH_CUDA_ALLOC_CONF` must be `expandable_segments:True` (no extra spaces).
-  adding gibrish to it#
+**Symptom**
+
+- Full tqdm ingest runs again after restarting the kernel, even though `notebooks/products_vectorstore/` already has data.
+- Or: on-disk DB looks populated, but queries behave like an empty collection.
+
+**Root cause**
+
+- `chromadb.PersistentClient(path="products_vectorstore")` resolves relative to the **Jupyter kernel’s current working directory**, not relative to the notebook file.
+- If cwd is repo root one run and `notebooks/` another, Chroma reads/writes **different folders** (e.g. `deal_hunter/products_vectorstore` vs `deal_hunter/notebooks/products_vectorstore`).
+- Using `root_dir = Path.cwd().resolve().parents[0]` only equals the repo root when cwd is **`notebooks/`**; if cwd is the repo root, `parents[0]` is the parent of the repo and paths break.
+
+**Fix**
+
+- Point Chroma at a single absolute path under the repo, e.g. `notebooks/products_vectorstore`, built from a `root_dir` that is detected reliably.
+
+```python
+from pathlib import Path
+
+_cwd = Path.cwd().resolve()
+root_dir = _cwd if (_cwd / "src").is_dir() else _cwd.parent
+
+DB = str(root_dir / "notebooks" / "products_vectorstore")
+chroma_client = chromadb.PersistentClient(path=DB)
+```
+
+**Sanity check**
+
+```python
+import os
+print(os.getcwd())
+print(root_dir)
+print(Path(DB).resolve())
+```
+
+- Expect `Path(DB).resolve()` to end with `.../deal_hunter/notebooks/products_vectorstore` and `root_dir` to be `.../deal_hunter` (with a `src/` directory).
+
+**Note**
+
+- With `PersistentClient`, there is no separate “save”; persistence is the folder passed to `path=`. Reuse the same path after restart, then `get_collection(...)` or `get_or_create_collection` with a `count() > 0` short-circuit to skip re-embedding.

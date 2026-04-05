@@ -56,6 +56,4 @@ docs/
 cache/
 
 # Chroma / local vector store artifacts
-notebooks/products_vectorstore/chroma.sqlite3
-notebooks/products_vectorstore/*.sqlite3-shm
-notebooks/products_vectorstore/*.sqlite3-wal
+notebooks/products_vectorstore/
