@@ -1,6 +1,6 @@
-# Build Errors Review (Interview Notes)
+# Build Errors Review
 
-Quick reference of the major issues I hit while building the pricer service.
+Quick reference of the **conceptually major** issues: serving pattern, generation correctness, GPU memory, and **implicit paths** (cwd vs persisted data). Notebook-only dependency and naming quirks are omitted here.
 
 ## Problem 1: Ephemeral pattern was too slow
 
