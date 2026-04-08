@@ -1,24 +1,25 @@
 # Deal Hunter
 
-Deal Hunter is a week8-inspired multi-agent pricing project for finding high-value electronics deals.  
-This repository is in active buildout: notebook prototypes are being migrated into production-quality modules under `src/deal_hunter`.
+Deal Hunter is a multi-agent system for estimating product prices and surfacing high-value electronics deals. It combines retrieval-augmented LLM pricing, a fine-tuned specialist model on Modal, and (planned) additional agents and orchestration. Prototype work lives in `notebooks/`; stable code lives in `src/deal_hunter`.
 
 ## Current Status
 
 Implemented now:
+
 - `Item` data model + Hugging Face dataset loading in `src/deal_hunter/agents/items.py`
 - Modal fine-tuned pricing service (`Pricer`) in `src/deal_hunter/services/pricer.py`
 - LiteLLM-based product preprocessor in `src/deal_hunter/services/preprocessing.py`
 - Evaluation utilities (`Tester`, `evaluate`) in `src/deal_hunter/services/testing.py`
 - Exploration notebooks in `notebooks/`
 
-Planned next (from `.cursor/plans/buildfromweek8.plan.md`):
+Planned next:
+
 - Centralized config (`pydantic-settings`)
 - Pure Pydantic deal models
 - RSS scraping service, vector store service, notification service
 - Agent suite (`Scanner`, `Frontier`, `Specialist`, `NeuralNetwork`, `Ensemble`, `Messaging`, `Planning`)
 - End-to-end `main.py` orchestration and Gradio dashboard
-- Test suite and exploration notebook polish
+- Automated tests and a polished exploration notebook
 
 ## Target Architecture
 
@@ -39,14 +40,14 @@ flowchart TD
     planningAgent --> gradioUI[GradioUI]
 ```
 
-Note: several boxes above are planned and not implemented in `src/` yet.
+Note: several components above are planned and not implemented in `src/` yet.
 
 ## Repository Layout
 
-- `src/deal_hunter/` - package code (services, agents, models, ui, nn)
-- `notebooks/` - prototype and benchmarking notebooks
-- `error_docs/errors.md` - troubleshooting notes and major build fixes
-- `.cursor/plans/buildfromweek8.plan.md` - phase-by-phase implementation plan
+- `src/deal_hunter/` — package code (services, agents, models, ui, nn)
+- `notebooks/` — experiments and benchmarks
+- `error_docs/errors.md` — troubleshooting notes and major build fixes
+- `.cursor/plans/` — internal planning notes (optional for contributors)
 
 ## Prerequisites
 
@@ -54,7 +55,7 @@ Note: several boxes above are planned and not implemented in `src/` yet.
 - `uv` package manager
 - Accounts/tokens for:
   - Hugging Face (`HF_TOKEN`)
-  - OpenAI-compatible provider key (`OPENAI_API_KEY`) for frontier notebook cells
+  - OpenAI-compatible provider key (`OPENAI_API_KEY`) for RAG / frontier-style notebook cells
   - Modal authentication for remote specialist pricing
 
 ## Quickstart
@@ -74,7 +75,7 @@ HF_TOKEN=your_huggingface_token
 OPENAI_API_KEY=your_openai_key
 ```
 
-Optional (for notifications later in the roadmap):
+Optional (for notifications when that path is implemented):
 
 ```bash
 PUSHOVER_USER=your_pushover_user_key
@@ -88,7 +89,7 @@ uv run modal token new
 uv run modal token set --token-id <id> --token-secret <secret>
 ```
 
-### 4) Run prototype notebooks
+### 4) Run notebooks
 
 ```bash
 uv run jupyter lab notebooks/ensemble_agent.ipynb
@@ -106,44 +107,40 @@ uv run jupyter lab notebooks/modal_preprocessing.ipynb
 uv run modal deploy src/deal_hunter/services/pricer.py
 ```
 
-## Notebook-First, Package-Second Workflow
+## Development workflow
 
-Current development flow:
-1. Learn/experiment in `week8/dayX.ipynb` and local `notebooks/`
-2. Validate behavior with small benchmarks
-3. Move stable logic into typed, testable modules under `src/deal_hunter/`
+1. Iterate in `notebooks/` for fast experiments.
+2. Validate with small benchmarks where useful.
+3. Promote stable logic into typed, testable modules under `src/deal_hunter/`.
 
-Important: `week8/` is course reference material and should not be modified.
+## Roadmap
 
-## Roadmap (Phase-Aligned)
+- Scaffolding and centralized settings
+- `models/deals.py` and related Pydantic types
+- RSS, vector store, notifications, and preprocessing hardening
+- Base agent abstraction and full multi-agent stack
+- `main.py` entrypoint for the full pipeline
+- Modal deployment polish
+- Gradio dashboard
+- Test suite and exploration notebook cleanup
 
-- Phase 0-1: scaffolding + centralized settings
-- Phase 2: `models/deals.py`
-- Phase 3a-3d: RSS, vector store, notifications, preprocessing hardening
-- Phase 4-5: base agent + full multi-agent stack
-- Phase 6: `main.py` entrypoint pipeline
-- Phase 7: Modal deployment hardening
-- Phase 8: Gradio dashboard
-- Phase 9-10: tests + polished exploration notebook
+## Known gaps
 
-Detailed phase checklist: `.cursor/plans/buildfromweek8.plan.md`.
-
-## Known Gaps
-
-- CLI script `deal-hunter = deal_hunter.main:main` is declared in `pyproject.toml`, but `deal_hunter/main.py` is not implemented yet.
-- RSS ingestion, vector retrieval, and orchestration agents are still pending migration from notebook/course patterns.
+- CLI entry `deal-hunter = deal_hunter.main:main` is declared in `pyproject.toml`, but `deal_hunter/main.py` is not implemented yet.
+- RSS ingestion, vector retrieval, and orchestration agents are still to be ported from notebook prototypes into `src/`.
 
 ## Troubleshooting
 
 See `error_docs/errors.md` for practical fixes around:
+
 - Modal cold-start and serving patterns
 - Generation `attention_mask` issues
 - GPU memory constraints on T4
-- Chroma persistence path/cwd pitfalls
+- Chroma persistence path / working-directory pitfalls
 
-## Contributing Notes
+## Contributing notes
 
-- Keep notebook code exploratory; keep `src/` code production-oriented.
+- Treat `notebooks/` as exploratory; keep `src/` production-oriented.
 - Use Pydantic v2 models and config-driven patterns.
 - Prefer dependency injection between services and agents.
-- Keep model/provider choices centralized once `config.py` lands.
+- Centralize model and provider choices once `config.py` exists.
