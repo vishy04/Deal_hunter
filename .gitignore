@@ -54,6 +54,7 @@ Thumbs.db
 week8/
 docs/
 cache/
+planning/
 
 # Chroma / local vector store artifacts
 notebooks/products_vectorstore/
