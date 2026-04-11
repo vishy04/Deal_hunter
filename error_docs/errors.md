@@ -370,3 +370,53 @@ class MessagingAgent(Agent):
 - The lazy import means `MessagingAgent` loads and its other methods (`push`, `alert`, `notify`) work even when `litellm` is broken. The `SyntaxError` only surfaces when `craft_message` actually runs, which is the only method that needs `completion`.
 - After fixing the import location, reinstalling `litellm` (`uv pip install --force-reinstall "litellm==1.82.4"`) repaired the corrupted package and made `craft_message` functional again.
 
+## Problem 12: FrontierAgent hardcoded `gpt-40-mini` typo
+
+**Symptom**
+
+- `openai.NotFoundError: 404 ... model gpt-40-mini does not exist` the first time a real planner run reached `FrontierAgent.price()`.
+- Mocked tests passed fine because the OpenAI call was stubbed; the typo only surfaced against a live model.
+
+**Root cause**
+
+- `FrontierAgent.__init__` set `self.MODEL = "gpt-40-mini"` (forty, not four-oh).
+- The same class also hardcoded the embedding model name and ignored `settings.frontier_model` / `settings.embedding_model`, so there was no single place to fix the string once you noticed it.
+
+**Bad pattern**
+
+```python
+class FrontierAgent(Agent):
+    MODEL = "gpt-4o-mini"
+
+    def __init__(self, collection) -> None:
+        self.client = OpenAI()
+        self.MODEL = "gpt-40-mini"
+        self.collection = collection
+        self.encoder_model = SentenceTransformer(
+            "sentence-transformers/all-MiniLM-L6-v2"
+        )
+```
+
+**Fix pattern**
+
+```python
+class FrontierAgent(Agent):
+    def __init__(self, collection) -> None:
+        self.client = OpenAI()
+        self.MODEL = settings.frontier_model
+        self.collection = collection
+        self.encoder_model = SentenceTransformer(settings.embedding_model)
+```
+
+**Note**
+
+- A second footgun lived in `price()`: `reasoning_effort="low"` was sent unconditionally, which 400s on non-reasoning models like `gpt-4o-mini`. Fix: read `settings.frontier_reasoning_effort`, lower-case it, and only pass `reasoning_effort` when the value is non-empty and not the sentinel `"none"`.
+
+```python
+kwargs = {"model": self.MODEL, "messages": ..., "seed": 42}
+effort = (settings.frontier_reasoning_effort or "").strip().lower()
+if effort and effort != "none":
+    kwargs["reasoning_effort"] = effort
+response = self.client.chat.completions.create(**kwargs)
+```
+
