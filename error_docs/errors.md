@@ -511,3 +511,42 @@ def setup_logging(log_queue: queue.Queue) -> None:
 
 - The sweep only removes `QueueHandler` instances, so any other handlers (stream, file) survive across ticks. That matters if you run the UI while also tailing logs in a terminal.
 
+## Problem 15: Chroma `PersistentClient` race at UI startup
+
+**Symptom**
+
+- Intermittent crashes on the first few seconds after launching the Gradio app. Later queries against `self.collection` returned errors like "RustBindingsAPI is not initialized" or produced empty results despite a populated on-disk store.
+
+**Root cause**
+
+- `App.get_framework` started as a single `is None` check with no lock. Gradio fired `ui.load` and the timer at roughly the same moment on startup, and two worker threads could both enter `DealAgentFramework.__init__` at once.
+- Both called `chromadb.PersistentClient(path=settings.vectorstore_path)` against the same path. Chroma's `SharedSystemClient` registry is not safe under that race and left a half-initialised client behind.
+
+**Bad pattern**
+
+```python
+def get_framework(self) -> DealAgentFramework:
+    if self.framework is None:
+        self.framework = DealAgentFramework()
+    return self.framework
+```
+
+**Fix pattern**
+
+```python
+def __init__(self):
+    self.framework: DealAgentFramework | None = None
+    self._framework_lock = threading.Lock()
+
+def get_framework(self) -> DealAgentFramework:
+    if self.framework is None:
+        with self._framework_lock:
+            if self.framework is None:
+                self.framework = DealAgentFramework()
+    return self.framework
+```
+
+**Note**
+
+- Warming the framework once on the main thread right before `ui.launch()` removes the race entirely for the normal startup path. The double-checked lock stays as insurance against any code path that builds the UI without the warm call.
+
