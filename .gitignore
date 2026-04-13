@@ -53,6 +53,7 @@ Thumbs.db
 .cursor/
 week8/
 docs/
+planning/
 cache/
 
 # Chroma / local vector store artifacts
