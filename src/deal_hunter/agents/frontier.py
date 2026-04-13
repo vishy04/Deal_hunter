@@ -15,7 +15,7 @@ class FrontierAgent(Agent):
         self.log("Starting Frontier Agent")
         self.client = OpenAI()
 
-        self.MODEL = "gpt-4o-mini"
+        self.MODEL = "gpt-40-mini"
 
         self.collection = collection
         self.encoder_model = SentenceTransformer(
