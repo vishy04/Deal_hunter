@@ -472,3 +472,42 @@ class EnsembleAgent(Agent):
 
 - `settings.ensemble_frontier_weight` and `settings.ensemble_specialist_weight` keep the original fitted values as defaults, so day-one behaviour is identical. Later tuning is one env-var change away.
 
+## Problem 14: Gradio `QueueHandler` leak across timer ticks
+
+**Symptom**
+
+- After the UI had been open for a while, each log message started appearing multiple times in the log pane.
+- Memory and CPU climbed steadily even on idle ticks where nothing found a new deal.
+
+**Root cause**
+
+- Every timer tick called `run_with_logging`, which built a fresh `queue.Queue` and called `setup_logging` to attach a new `QueueHandler` to the root logger.
+- The previous tick's `QueueHandler` was never removed. Each `logging.info(...)` call fanned out to every handler ever attached, including ones pointing at queues Gradio had already stopped reading.
+
+**Bad pattern**
+
+```python
+def setup_logging(log_queue: queue.Queue) -> None:
+    handler = QueueHandler(log_queue)
+    handler.setFormatter(logging.Formatter(...))
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(logging.INFO)
+```
+
+**Fix pattern**
+
+```python
+def setup_logging(log_queue: queue.Queue) -> None:
+    root = logging.getLogger()
+    for old in [h for h in root.handlers if isinstance(h, QueueHandler)]:
+        root.removeHandler(old)
+    handler = QueueHandler(log_queue)
+    handler.setFormatter(logging.Formatter(...))
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+```
+
+**Note**
+
+- The sweep only removes `QueueHandler` instances, so any other handlers (stream, file) survive across ticks. That matters if you run the UI while also tailing logs in a terminal.
+
