@@ -420,3 +420,55 @@ if effort and effort != "none":
 response = self.client.chat.completions.create(**kwargs)
 ```
 
+## Problem 13: EnsembleAgent hardcoded weights
+
+**Symptom**
+
+- Ensemble predictions moved around even when the underlying sub-agents were deterministic, because rerunning a linear-regression fit on a new held-out split was the only way to update the blend.
+- `EnsembleAgent.price()` had two magic floats with no explanation of where they came from.
+
+**Root cause**
+
+- The ensemble weights (`0.8115...` frontier, `0.1884...` specialist) were inlined in the `price()` body. Tuning or A/B-ing meant editing code, and the values drifted out of sync with what was written in any config or doc.
+
+**Bad pattern**
+
+```python
+class EnsembleAgent(Agent):
+    def __init__(self, collection) -> None:
+        self.specialist = SpecialistAgent()
+        self.frontier = FrontierAgent(collection)
+        self.preprocessor = Preprocessor()
+
+    def price(self, description: str) -> float:
+        rewrite = self.preprocessor.preprocess(description)
+        specialist = self.specialist.price(rewrite)
+        frontier = self.frontier.price(rewrite)
+        return frontier * 0.8115124189175806 + specialist * 0.1884875810824194
+```
+
+**Fix pattern**
+
+```python
+class EnsembleAgent(Agent):
+    def __init__(self, collection) -> None:
+        self.specialist = SpecialistAgent()
+        self.frontier = FrontierAgent(collection)
+        self.preprocessor = Preprocessor()
+        self.frontier_weight = settings.ensemble_frontier_weight
+        self.specialist_weight = settings.ensemble_specialist_weight
+
+    def price(self, description: str) -> float:
+        rewrite = self.preprocessor.preprocess(description)
+        specialist = self.specialist.price(rewrite)
+        frontier = self.frontier.price(rewrite)
+        return (
+            frontier * self.frontier_weight
+            + specialist * self.specialist_weight
+        )
+```
+
+**Note**
+
+- `settings.ensemble_frontier_weight` and `settings.ensemble_specialist_weight` keep the original fitted values as defaults, so day-one behaviour is identical. Later tuning is one env-var change away.
+
