@@ -1,6 +1,6 @@
 # Build Errors Review
 
-Quick reference of the **conceptually major** issues: serving pattern, generation correctness, GPU memory, and **implicit paths** (cwd vs persisted data). Notebook-only dependency and naming quirks are omitted here.
+Quick reference of build errors worth remembering. Covers serving patterns, generation correctness, GPU memory, implicit paths, and agent constructor/API bugs.
 
 ## Problem 1: Ephemeral pattern was too slow
 
@@ -136,3 +136,161 @@ print(Path(DB).resolve())
 **Note**
 
 - With `PersistentClient`, there is no separate “save”; persistence is the folder passed to `path=`. Reuse the same path after restart, then `get_collection(...)` or `get_or_create_collection` with a `count() > 0` short-circuit to skip re-embedding.
+
+## Problem 5: `ScannerAgent()` crashes with missing `rss` argument
+
+**Symptom**
+
+- `TypeError: ScannerAgent.__init__() missing 1 required positional argument: 'rss'` when calling `ScannerAgent()` with no arguments.
+
+**Root cause**
+
+- The constructor declared `rss: Rss_Service` as a required positional parameter instead of an optional one with a `None` default.
+- The plan called for dependency injection where both `rss` and `openai_client` default to `None`, and the constructor creates instances internally if nothing is passed.
+
+**Bad pattern**
+
+```python
+def __init__(self, rss: Rss_Service, openai_client=OpenAI) -> None:
+    self.rss = rss
+    self.openai = openai_client
+```
+
+**Fix pattern**
+
+```python
+def __init__(
+    self,
+    rss: Rss_Service | None = None,
+    openai_client: OpenAI | None = None,
+) -> None:
+    self.rss = rss or Rss_Service()
+    self.openai = openai_client or OpenAI()
+```
+
+**Note**
+
+- The bad version also set `openai_client=OpenAI` (the class, not an instance). That means `self.openai` would be the class object itself, and calling `self.openai.chat.completions.parse(...)` on it would fail because you need an instance.
+
+## Problem 6: Wrong OpenAI API path (`completions.parse` vs `chat.completions.parse`)
+
+**Symptom**
+
+- `AttributeError` at runtime. The `openai.OpenAI()` client has no `completions.parse` method.
+
+**Root cause**
+
+- The call was written as `self.openai.completions.parse(...)`, missing the `chat` segment. The structured-output parse endpoint lives at `client.chat.completions.parse()`, not `client.completions.parse()`.
+
+**Bad pattern**
+
+```python
+completion = self.openai.completions.parse(
+    model=self.scanner_model,
+    ...
+)
+```
+
+**Fix pattern**
+
+```python
+completion = self.openai.chat.completions.parse(
+    model=self.scanner_model,
+    ...
+)
+```
+
+## Problem 7: `scan` sends empty prompt to OpenAI when no deals exist
+
+**Symptom**
+
+- If RSS feeds return zero new deals, `scan()` still builds a prompt and calls OpenAI. That wastes tokens on an empty request and might confuse the model into hallucinating deals.
+
+**Root cause**
+
+- No guard clause after `fetch_deals()`. The method assumed there would always be deals to process.
+
+**Bad pattern**
+
+```python
+def scan(self, memory: list[str] | None = None) -> DealSelection | None:
+    scraped = self.fetch_deals(memory=memory)
+    user_prompt = self.make_user_prompt(scraped=scraped)
+    completion = self.openai.chat.completions.parse(...)
+    ...
+```
+
+**Fix pattern**
+
+```python
+def scan(self, memory: list[str] | None = None) -> DealSelection | None:
+    scraped = self.fetch_deals(memory=memory)
+    if not scraped:
+        self.log("No new deals found")
+        return None
+    user_prompt = self.make_user_prompt(scraped=scraped)
+    ...
+```
+
+## Problem 8: Constructor accepts `None` but never creates default instances
+
+**Symptom**
+
+- `AttributeError: 'NoneType' object has no attribute 'scrape_feeds'` when calling `ScannerAgent().scan()`.
+
+**Root cause**
+
+- The constructor signature was fixed to accept `None` defaults, but the body just assigns them as-is. Calling `ScannerAgent()` leaves `self.rss` and `self.openai` as `None`, so any method that touches them crashes.
+
+**Bad pattern**
+
+```python
+def __init__(self, rss: Rss_Service | None = None, openai_client: OpenAI | None = None):
+    self.rss = rss
+    self.openai = openai_client
+```
+
+**Fix pattern**
+
+```python
+def __init__(self, rss: Rss_Service | None = None, openai_client: OpenAI | None = None):
+    self.rss = rss or Rss_Service()
+    self.openai = openai_client or OpenAI()
+```
+
+**Note**
+
+- This is the second half of Problem 5. The signature was fixed but the body wasn't. Half a fix is sometimes worse than no fix because the `TypeError` from Problem 5 was at least obvious; this one only shows up when you actually call `scan()`.
+
+## Problem 9: Empty-deals guard uses `is None` instead of `not`
+
+**Symptom**
+
+- `scan()` sends a blank prompt to OpenAI when RSS returns zero deals, wasting tokens and getting back hallucinated results.
+
+**Root cause**
+
+- `fetch_deals` returns a `list`, so when there are no deals it returns `[]`. The guard `if scraped is None` never fires because `[] is None` is `False`. The empty list slides through to `make_user_prompt` and then to the OpenAI call.
+
+**Bad pattern**
+
+```python
+scraped = self.fetch_deals(memory=memory)
+if scraped is None:
+    self.log("No deals found")
+    return None
+```
+
+**Fix pattern**
+
+```python
+scraped = self.fetch_deals(memory=memory)
+if not scraped:
+    self.log("No deals found")
+    return None
+```
+
+**Note**
+
+- `not []` is `True` in Python, so `if not scraped` catches both `None` and empty lists. `is None` only catches the literal `None` object.
+
