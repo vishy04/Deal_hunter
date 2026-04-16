@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # agent_models
     scanner_model: str = "gpt-5-mini"
-    messenger_model: str = "claude-sonnet-4-5"
+    messenger_model: str = "gpt-4o-mini"
     frontier_model: str = "gpt-4o-mini"
     frontier_reasoning_effort: str = "none"
 
