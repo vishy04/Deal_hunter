@@ -46,5 +46,17 @@ class Settings(BaseSettings):
     model_hf_secret: str = "huggingface-secret"
     modal_volume_name: str = "hf-hub-cache"
 
+    # planning
+    planner_model: str = "gpt-5.1"
+    deal_threshold: float = 50.0
+
+    # persistence
+    memory_filename: str = "memory.json"
+    vectorstore_path: str = "products_vectorstore"
+    vectorstore_collection: str = "products"
+
+    # ui
+    ui_timer_intervals: int = 300
+
 
 settings = Settings()
