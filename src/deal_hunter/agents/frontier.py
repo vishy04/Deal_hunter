@@ -3,24 +3,21 @@ from typing import List, Dict
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 from deal_hunter.agents.agent import Agent
+from deal_hunter.config import settings
 
 
 class FrontierAgent(Agent):
     name = "FrontierAgent"
     color = Agent.BLUE
 
-    MODEL = "gpt-4o-mini"
-
     def __init__(self, collection) -> None:
         self.log("Starting Frontier Agent")
         self.client = OpenAI()
 
-        self.MODEL = "gpt-40-mini"
+        self.MODEL = settings.frontier_model
 
         self.collection = collection
-        self.encoder_model = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2"
-        )
+        self.encoder_model = SentenceTransformer(settings.embedding_model)
         self.log("Frontier Agent is ready")
 
     def make_context(self, similars: List[str], prices: List[float]) -> str:
@@ -64,7 +61,7 @@ class FrontierAgent(Agent):
             model=self.MODEL,
             messages=self.message_for(description, documents, prices),
             seed=42,
-            reasoning_effort="none",
+            reasoning_effort=settings.frontier_reasoning_effort,
         )
         reply = response.choices[0].message.content
         result = self.get_price(reply)

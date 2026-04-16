@@ -1,6 +1,7 @@
 from deal_hunter.agents.agent import Agent
 from deal_hunter.agents.specialist import SpecialistAgent
 from deal_hunter.agents.frontier import FrontierAgent
+from deal_hunter.config import settings
 from deal_hunter.services.preprocessing import Preprocessor
 
 
@@ -15,6 +16,9 @@ class EnsembleAgent(Agent):
         self.frontier = FrontierAgent(collection)
         self.preprocessor = Preprocessor()
 
+        # ensemble weights
+        self.frontier_weights = settings.ensemble_frontier_weights
+        self.specialist_weights = settings.ensemble_specialist_weight
         self.log("Ensemble Agent is ready")
 
     def price(self, description: str) -> float:
@@ -23,6 +27,8 @@ class EnsembleAgent(Agent):
         self.log(f"Preprocessing Text using:{self.preprocessor.model_name}")
         specialist = self.specialist.price(rewrite)
         frontier = self.frontier.price(rewrite)
-        combined = frontier * (0.8115124189175806) + specialist * (0.1884875810824194)
+        combined = frontier * (self.frontier_weights) + specialist * (
+            self.specialist_weights
+        )
         self.log(f"Ensemble Agent completed - Predicted ${combined:,.2f}")
         return combined
