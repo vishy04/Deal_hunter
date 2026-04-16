@@ -17,8 +17,8 @@ class EnsembleAgent(Agent):
         self.preprocessor = Preprocessor()
 
         # ensemble weights
-        self.frontier_weights = settings.ensemble_frontier_weights
-        self.specialist_weights = settings.ensemble_specialist_weight
+        self.frontier_weight = settings.ensemble_frontier_weight
+        self.specialist_weight = settings.ensemble_specialist_weight
         self.log("Ensemble Agent is ready")
 
     def price(self, description: str) -> float:
@@ -27,8 +27,8 @@ class EnsembleAgent(Agent):
         self.log(f"Preprocessing Text using:{self.preprocessor.model_name}")
         specialist = self.specialist.price(rewrite)
         frontier = self.frontier.price(rewrite)
-        combined = frontier * (self.frontier_weights) + specialist * (
-            self.specialist_weights
+        combined = frontier * (self.frontier_weight) + specialist * (
+            self.specialist_weight
         )
         self.log(f"Ensemble Agent completed - Predicted ${combined:,.2f}")
         return combined
