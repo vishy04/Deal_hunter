@@ -294,3 +294,79 @@ if not scraped:
 
 - `not []` is `True` in Python, so `if not scraped` catches both `None` and empty lists. `is None` only catches the literal `None` object.
 
+## Problem 10: Default notifier constructed but never assigned
+
+**Symptom**
+
+- `AttributeError: 'NoneType' object has no attribute 'send'` when calling `MessagingAgent().push(...)`, `alert(...)`, or `notify(...)` without passing an explicit `notifier`.
+
+**Root cause**
+
+- Line 18 sets `self.notifier = notifier`, which is `None` when no argument is passed.
+- Lines 22-25 call `PushoverNotifier(settings.pushover_user, settings.pushover_token)` but never assign the result back to `self.notifier`.
+- The freshly created instance gets discarded immediately. `self.notifier` stays `None`.
+
+**Bad pattern**
+
+```python
+self.notifier = notifier
+
+if notifier is None:
+    PushoverNotifier(
+        settings.pushover_user,
+        settings.pushover_token,
+    )
+else:
+    self.notifier = notifier
+```
+
+**Fix pattern**
+
+```python
+self.notifier = notifier or PushoverNotifier(
+    settings.pushover_user,
+    settings.pushover_token,
+)
+```
+
+**Note**
+
+- The `else` branch (`self.notifier = notifier`) also duplicated line 18, so `notifier` was assigned twice on the non-`None` path. The one-liner fix handles both branches and removes the dead code.
+
+## Problem 11: Top-level `litellm` import prevents module from loading
+
+**Symptom**
+
+- `SyntaxError: invalid syntax` when importing `MessagingAgent`, or anything that touches `deal_hunter.agents`. The traceback points at `litellm/main.py`, not at your code.
+
+**Root cause**
+
+- `from litellm import completion` sat at the top of `messaging.py`. Python evaluates top-level imports when the module first loads, so a broken or corrupted `litellm` install (in this case `main.py` started with raw markdown) killed the import chain before any class or function was defined.
+- Because `agents/__init__.py` re-exports `MessagingAgent`, every consumer of the `agents` package failed too.
+
+**Bad pattern**
+
+```python
+from litellm import completion
+
+class MessagingAgent(Agent):
+    ...
+    def craft_message(self, ...):
+        response = completion(...)
+```
+
+**Fix pattern**
+
+```python
+class MessagingAgent(Agent):
+    ...
+    def craft_message(self, ...):
+        from litellm import completion
+        response = completion(...)
+```
+
+**Note**
+
+- The lazy import means `MessagingAgent` loads and its other methods (`push`, `alert`, `notify`) work even when `litellm` is broken. The `SyntaxError` only surfaces when `craft_message` actually runs, which is the only method that needs `completion`.
+- After fixing the import location, reinstalling `litellm` (`uv pip install --force-reinstall "litellm==1.82.4"`) repaired the corrupted package and made `craft_message` functional again.
+
