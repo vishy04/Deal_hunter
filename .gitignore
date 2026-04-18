@@ -55,6 +55,12 @@ week8/
 docs/learning
 cache/
 planning/
+.gemini/
+GEMINI.md
 
 # Chroma / local vector store artifacts
 notebooks/products_vectorstore/
+
+
+#graphify 
+graphify-out/
