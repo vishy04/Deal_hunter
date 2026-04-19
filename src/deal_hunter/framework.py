@@ -22,7 +22,9 @@ class DealAgentFramework(Agent):
         self.log("Starting Agent Framework")
 
         client = chromadb.PersistentClient(path=settings.vectorstore_path)
-        self.collection = client.get_collection(settings.vectorstore_collection)
+        self.collection = client.get_or_create_collection(
+            settings.vectorstore_collection
+        )
 
         self.memory = self._read_memory()
         self.planner = None
@@ -52,7 +54,7 @@ class DealAgentFramework(Agent):
             self.log("Planning Agent Started")
 
     def run(self) -> list[Opportunity]:
-        self.__init_planner()
+        self._init_planner()
         self.log("Starting Run")
         result = self.planner.plan(memory=self.memory)
 
