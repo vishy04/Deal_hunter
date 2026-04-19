@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     ensemble_specialist_weight: float = 0.1884875810824194
 
     # embeddings
-    embedding_model: str = "sentence-transformers/all-Mini-LM-L6-v2"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # modal app(pricer.py)
 
