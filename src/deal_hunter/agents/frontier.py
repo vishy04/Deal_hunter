@@ -57,12 +57,19 @@ class FrontierAgent(Agent):
 
     def price(self, description: str) -> float:
         documents, prices = self.find_similar(description)
-        response = self.client.chat.completions.create(
-            model=self.MODEL,
-            messages=self.message_for(description, documents, prices),
-            seed=42,
-            reasoning_effort=settings.frontier_reasoning_effort,
-        )
+        # Only reasoning-family models (o-series, gpt-5*) accept reasoning_effort.
+        # Treat the sentinel "none" / empty as "don't send it" so non-reasoning
+        # models like gpt-4o-mini don't 400 with an unrecognized argument.
+        kwargs: dict = {
+            "model": self.MODEL,
+            "messages": self.message_for(description, documents, prices),
+            "seed": 42,
+        }
+        effort = (settings.frontier_reasoning_effort or "").strip().lower()
+        if effort and effort != "none":
+            kwargs["reasoning_effort"] = effort
+
+        response = self.client.chat.completions.create(**kwargs)
         reply = response.choices[0].message.content
         result = self.get_price(reply)
         self.log(f"Frontier Agent Completed - predicted {result:.2f}")
