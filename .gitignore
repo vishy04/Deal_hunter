@@ -60,6 +60,10 @@ GEMINI.md
 
 # Chroma / local vector store artifacts
 notebooks/products_vectorstore/
+products_vectorstore/
+
+# Planner persistence
+memory.json
 
 
 #graphify 
