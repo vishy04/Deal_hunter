@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     vectorstore_collection: str = "products"
 
     # ui
-    ui_timer_intervals: int = 300
+    ui_timer_interval: int = 300
 
 
 settings = Settings()
