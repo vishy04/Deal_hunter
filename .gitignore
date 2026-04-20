@@ -53,6 +53,8 @@ Thumbs.db
 .cursor/
 week8/
 docs/learning
+docs/interview
+docs/future
 cache/
 planning/
 .gemini/
@@ -65,7 +67,6 @@ products_vectorstore/
 
 # Planner persistence
 memory.json
-
 
 #graphify 
 graphify-out/
