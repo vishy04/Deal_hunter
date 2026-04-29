@@ -49,7 +49,7 @@ Thumbs.db
 .idea/
 *.swp
 
-
+src/deal_hunter/agents/resume.tex
 .cursor/
 week8/
 docs/learning
