@@ -27,17 +27,17 @@ The code you should treat as source of truth is in `src/deal_hunter/`. Notebooks
 
 ```mermaid
 flowchart TD
-    rss[RSS feeds] --> scanner[ScannerAgent]
-    scanner --> planner[PlanningAgent]
-    planner --> ensemble[EnsembleAgent]
-    ensemble --> preprocessor[Preprocessor]
-    ensemble --> frontier[FrontierAgent + Chroma]
-    ensemble --> specialist[SpecialistAgent (Modal Pricer)]
-    planner --> notifier[MessagingAgent -> PushoverNotifier]
-    framework[DealAgentFramework] --> planner
-    framework --> memory[memory.json]
+    rss["RSS feeds"] --> scanner["ScannerAgent"]
+    scanner --> planner["PlanningAgent"]
+    planner --> ensemble["EnsembleAgent"]
+    ensemble --> preprocessor["Preprocessor"]
+    ensemble --> frontier["FrontierAgent + Chroma"]
+    ensemble --> specialist["SpecialistAgent - Modal Pricer"]
+    planner --> notifier["MessagingAgent to PushoverNotifier"]
+    framework["DealAgentFramework"] --> planner
+    framework --> memory["memory.json"]
     framework --> chroma[(Chroma collection)]
-    ui[Gradio App] --> framework
+    ui["Gradio App"] --> framework
 ```
 
 ## Repository layout
